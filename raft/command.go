@@ -1,4 +1,4 @@
-package distro
+package raft
 
 type Op int
 

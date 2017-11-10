@@ -1,4 +1,4 @@
-package distro
+package raft
 
 import (
 	"encoding/json"

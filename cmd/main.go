@@ -3,54 +3,43 @@ package main
 import (
 	"fmt"
 	"log"
-	"net"
 	"time"
 
-	"github.com/ChrisRx/distro"
+	"github.com/ChrisRx/myriad"
 )
 
 func main() {
 	addrs := []string{":12345", ":12346", ":12347"}
-	nodes := make([]*distro.Distro, 0)
+	nodes := make([]*myriad.Node, 0)
 	for i, addr := range addrs {
-		tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
-		if err != nil {
-			log.Fatal(err)
-		}
-		s, err := distro.New(&distro.Config{
+		n, err := myriad.New(&myriad.Config{
 			Dir:                 "data",
 			Addr:                addr,
 			EnableSingle:        i == 0,
 			RaftTimeout:         10 * time.Second,
 			RetainSnapshotCount: 2,
-			StreamLayer:         distro.NewRaftLayer(tcpAddr),
 			InitialPeers:        addrs,
 		})
 		if err != nil {
 			log.Fatal(err)
 		}
-		nodes = append(nodes, s)
+		nodes = append(nodes, n)
 	}
 
 	addrs2 := []string{":12348", ":12349", ":12350"}
 	for i, addr := range addrs2 {
-		tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
-		if err != nil {
-			log.Fatal(err)
-		}
-		s, err := distro.New(&distro.Config{
+		n, err := myriad.New(&myriad.Config{
 			Dir:                 "data",
 			Addr:                addr,
 			EnableSingle:        i == 0,
 			RaftTimeout:         10 * time.Second,
 			RetainSnapshotCount: 2,
-			StreamLayer:         distro.NewRaftLayer(tcpAddr),
 			InitialPeers:        addrs,
 		})
 		if err != nil {
 			log.Fatal(err)
 		}
-		nodes = append(nodes, s)
+		nodes = append(nodes, n)
 	}
 
 	s := nodes[0]

@@ -1,4 +1,4 @@
-package distro
+package netutil
 
 import (
 	"strconv"
@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func parseAddr(addr string) (string, int) {
+func ParseAddr(addr string) (string, int) {
 	parts := strings.Split(addr, ":")
 	if len(parts) != 2 {
 		panic(errors.Errorf("invalid addr: %#v", addr))

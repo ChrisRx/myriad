@@ -1,4 +1,4 @@
-package distro
+package gossip
 
 import (
 	"fmt"

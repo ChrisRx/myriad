@@ -1,33 +1,27 @@
-package distro_test
+package myriad_test
 
 import (
-	"net"
 	"testing"
 	"time"
 
-	"github.com/ChrisRx/distro"
+	"github.com/ChrisRx/myriad"
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestDistro(t *testing.T) {
+func TestCluster(t *testing.T) {
 	addrs := []string{":12345", ":12346", ":12347"}
-	nodes := make([]*distro.Distro, 0)
+	nodes := make([]*myriad.Node, 0)
 	for i, addr := range addrs {
-		tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
-		if err != nil {
-			t.Error(err)
-		}
-		s, err := distro.New(&distro.Config{
+		n, err := myriad.New(&myriad.Config{
 			Addr:         addr,
 			EnableSingle: i == 0,
 			RaftTimeout:  10 * time.Second,
-			StreamLayer:  distro.NewRaftLayer(tcpAddr),
 			InitialPeers: addrs,
 		})
 		if err != nil {
 			t.Error(err)
 		}
-		nodes = append(nodes, s)
+		nodes = append(nodes, n)
 	}
 
 	s := nodes[0]

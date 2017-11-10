@@ -1,9 +1,7 @@
-package distro
+package raft
 
 import (
 	"encoding/json"
-	"net"
-	"net/rpc"
 	"os"
 	"path/filepath"
 	"time"
@@ -32,17 +30,15 @@ func NewRaft(c *Config) (r *Raft, err error) {
 	if c.Logger == nil {
 		c.Logger = jolt.DefaultLogger()
 	}
-	store := &Store{
-		kv: make(map[string]string),
-	}
 	r = &Raft{
 		config: c,
 		id:     uuid.New(),
 		logger: c.Logger,
-		fsm:    store,
+		fsm: &Store{
+			kv: make(map[string]string),
+		},
 	}
 	r.RPC = &RaftRPC{r}
-	c.Store = store
 	transport := raft.NewNetworkTransport(c.StreamLayer, 3, 10*time.Second, os.Stderr)
 	var db raftbadger.LogStableStore
 	var snapshots raft.SnapshotStore
@@ -179,77 +175,4 @@ func (r *Raft) Delete(key string) error {
 	}
 	f := r.Raft.Apply(b, r.config.RaftTimeout)
 	return f.Error()
-}
-
-type RaftRPC struct {
-	raft *Raft
-}
-
-func (r *RaftRPC) newClient() (*rpc.Client, error) {
-	conn, err := net.Dial("tcp", string(r.raft.Leader()))
-	if err != nil {
-		return nil, err
-	}
-	conn.Write([]byte{byte(rpcCommand)})
-	client := rpc.NewClient(conn)
-	return client, nil
-}
-
-func (r *RaftRPC) Get(c *Command, resp *string) error {
-	if r.raft.IsLeader() {
-		v, err := r.raft.Get(c.Key)
-		if err != nil {
-			return err
-		}
-		*resp = v
-		return nil
-	}
-	client, err := r.newClient()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	err = client.Call("RaftRPC.Get", c, resp)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (r *RaftRPC) Set(c *Command, resp *string) error {
-	if r.raft.IsLeader() {
-		if err := r.raft.Set(c.Key, c.Value); err != nil {
-			return err
-		}
-		return nil
-	}
-	client, err := r.newClient()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	err = client.Call("RaftRPC.Set", c, resp)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (r *RaftRPC) Delete(c *Command, resp *string) error {
-	if r.raft.IsLeader() {
-		if err := r.raft.Delete(c.Key); err != nil {
-			return err
-		}
-		return nil
-	}
-	client, err := r.newClient()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	err = client.Call("RaftRPC.Delete", c, resp)
-	if err != nil {
-		return err
-	}
-	return nil
 }

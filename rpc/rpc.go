@@ -1,4 +1,4 @@
-package distro
+package rpc
 
 import (
 	"context"
@@ -12,10 +12,21 @@ import (
 type RPCType byte
 
 const (
-	rpcCommand RPCType = 0x01
-	rpcRaft            = 0x02
-	rpcGossip          = 0x03
+	CommandRPC RPCType = 0x01
+	RaftRPC            = 0x02
+	GossipRPC          = 0x03
 )
+
+type NetworkLayer interface {
+	Type() RPCType
+	Handoff(net.Conn) error
+}
+
+type Config struct {
+	Addr string
+
+	Logger *jolt.Logger
+}
 
 type Server struct {
 	net.Listener
@@ -24,10 +35,7 @@ type Server struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	gossipLayer *GossipLayer
-	raftLayer   *RaftLayer
-
-	store *Store
+	layers map[RPCType]NetworkLayer
 
 	logger *jolt.Logger
 }
@@ -42,16 +50,23 @@ func NewServer(c *Config) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{
-		Listener:    list,
-		gossipLayer: c.GossipConfig.Transport.(*GossipLayer),
-		raftLayer:   c.StreamLayer,
-		logger:      c.Logger,
-		store:       c.Store,
-		Server:      rpc.NewServer(),
+		Listener: list,
+		layers:   make(map[RPCType]NetworkLayer),
+		logger:   c.Logger,
+		Server:   rpc.NewServer(),
 	}
+	s.AddNetworkLayer(s)
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	go s.listen()
 	return s, nil
+}
+
+func (s *Server) Type() RPCType {
+	return CommandRPC
+}
+
+func (s *Server) AddNetworkLayer(layer NetworkLayer) {
+	s.layers[layer.Type()] = layer
 }
 
 func (s *Server) listen() {
@@ -78,23 +93,21 @@ func (s *Server) handleConn(conn net.Conn) {
 		conn.Close()
 		return
 	}
-	switch RPCType(buf[0]) {
-	case rpcCommand:
-		s.handleCommandConn(conn)
-	case rpcRaft:
-		s.raftLayer.Handoff(conn)
-	case rpcGossip:
-		s.gossipLayer.Handoff(conn)
-	default:
+	if handler, ok := s.layers[RPCType(buf[0])]; ok {
+		if err := handler.Handoff(conn); err != nil {
+			s.logger.Print(err)
+			return
+		}
+	} else {
 		s.logger.Print("unrecognized RPC byte: %v", buf[0])
 		conn.Close()
-		return
 	}
 }
 
-func (s *Server) handleCommandConn(conn net.Conn) {
+func (s *Server) Handoff(conn net.Conn) error {
 	defer conn.Close()
 	s.Server.ServeConn(conn)
+	return nil
 }
 
 func (s *Server) Close() error {

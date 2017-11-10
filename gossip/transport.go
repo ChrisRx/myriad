@@ -1,4 +1,4 @@
-package distro
+package gossip
 
 import (
 	"context"
@@ -7,67 +7,10 @@ import (
 
 	"github.com/ChrisRx/jolt"
 	"github.com/hashicorp/memberlist"
-	"github.com/hashicorp/raft"
 	"github.com/pkg/errors"
+
+	"github.com/ChrisRx/myriad/rpc"
 )
-
-type RaftLayer struct {
-	addr net.Addr
-
-	connCh chan net.Conn
-
-	ctx    context.Context
-	cancel context.CancelFunc
-}
-
-func NewRaftLayer(addr net.Addr) *RaftLayer {
-	l := &RaftLayer{
-		addr:   addr,
-		connCh: make(chan net.Conn),
-	}
-	l.ctx, l.cancel = context.WithCancel(context.Background())
-	return l
-}
-
-func (l *RaftLayer) Handoff(c net.Conn) error {
-	select {
-	case l.connCh <- c:
-		return nil
-	case <-l.ctx.Done():
-		return errors.Errorf("Raft RPC layer closed")
-	}
-}
-
-func (l *RaftLayer) Accept() (net.Conn, error) {
-	select {
-	case conn := <-l.connCh:
-		return conn, nil
-	case <-l.ctx.Done():
-		return nil, errors.Errorf("Raft RPC layer closed")
-	}
-}
-
-func (l *RaftLayer) Close() error {
-	if l.cancel != nil {
-		l.cancel()
-	}
-	return nil
-}
-
-func (l *RaftLayer) Addr() net.Addr { return l.addr }
-
-func (l *RaftLayer) Dial(address raft.ServerAddress, timeout time.Duration) (net.Conn, error) {
-	conn, err := net.DialTimeout("tcp", string(address), timeout)
-	if err != nil {
-		return nil, err
-	}
-	_, err = conn.Write([]byte{byte(rpcRaft)})
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
-	return conn, err
-}
 
 const (
 	udpRecvBufSize = 2 * 1024 * 1024
@@ -128,6 +71,10 @@ func NewGossipLayer(addr string) (*GossipLayer, error) {
 	return l, nil
 }
 
+func (l *GossipLayer) Type() rpc.RPCType {
+	return rpc.GossipRPC
+}
+
 func (l *GossipLayer) Handoff(c net.Conn) error {
 	select {
 	case l.streamCh <- c:
@@ -159,7 +106,7 @@ func (l *GossipLayer) DialTimeout(addr string, timeout time.Duration) (net.Conn,
 	if err != nil {
 		return nil, err
 	}
-	_, err = conn.Write([]byte{byte(rpcGossip)})
+	_, err = conn.Write([]byte{byte(rpc.GossipRPC)})
 	if err != nil {
 		conn.Close()
 		return nil, err

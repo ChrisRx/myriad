@@ -1,4 +1,4 @@
-package distro
+package gossip
 
 import (
 	"encoding/json"
@@ -8,6 +8,8 @@ import (
 	"github.com/ChrisRx/jolt"
 	"github.com/hashicorp/memberlist"
 	"github.com/pkg/errors"
+
+	"github.com/ChrisRx/myriad/netutil"
 )
 
 type Member struct {
@@ -26,6 +28,7 @@ type NodeMeta struct {
 	LocalNode *Member `json:"localnode"`
 }
 
+// TODO: gossip should be the top level membership with myriad.Cluster?
 type Gossip struct {
 	*memberlist.Memberlist
 
@@ -36,21 +39,22 @@ type Gossip struct {
 	logger *jolt.Logger
 }
 
-func NewGossip(c *Config) (*Gossip, error) {
-	if c.GossipConfig == nil {
-		c.GossipConfig = memberlist.DefaultLANConfig()
+func NewGossip(c *memberlist.Config) (*Gossip, error) {
+	if c == nil {
+		c = memberlist.DefaultLANConfig()
 	}
-	m, err := memberlist.Create(c.GossipConfig)
+	c.Logger = logger
+	m, err := memberlist.Create(c)
 	if err != nil {
 		return nil, err
 	}
 	g := &Gossip{
 		Memberlist: m,
-		config:     c.GossipConfig,
+		config:     c,
 		events:     make(chan memberlist.NodeEvent, 100),
-		logger:     c.Logger,
+		logger:     jolt.DefaultLogger(),
 	}
-	c.GossipConfig.Events = &memberlist.ChannelEventDelegate{g.events}
+	c.Events = &memberlist.ChannelEventDelegate{g.events}
 	return g, nil
 }
 
@@ -73,7 +77,7 @@ func (g *Gossip) SetLocalNode(m *Member) error {
 func (g *Gossip) Join(existing []string) (int, error) {
 	peers := make([]string, 0)
 	for _, addr := range existing {
-		host, port := parseAddr(addr)
+		host, port := netutil.ParseAddr(addr)
 		if host == "" {
 			host = "localhost"
 		}
